@@ -6,7 +6,7 @@ default:
 # Browser repositories
 browsers:
   # Fallback to camoufox org
-  - repo: daijro/camoufox, camoufox/camoufox
+  - repo: barbatus/camoufox, daijro/camoufox, camoufox/camoufox
     name: Official
     pattern: "{name}-{version}-{build}-{os}.{arch}.zip"
     versions:
@@ -14,7 +14,7 @@ browsers:
           min: "0.5.0"
           max: "1"
         browser:
-          min: "beta.19"
+          min: "alpha.1"
           max: "1"
 
   - repo: coryking/camoufox
