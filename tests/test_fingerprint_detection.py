@@ -27,6 +27,7 @@ FPJS_SECRET_KEY = os.environ.get("FPJS_SECRET_KEY", "")
 FPJS_REGION = "eu"
 FPJS_API_BASE = "https://eu.api.fpjs.io"
 
+
 # Minimal HTML page that loads FingerprintJS and captures the result
 def _build_test_page() -> str:
     return (
@@ -127,13 +128,17 @@ async def _start_test_server() -> tuple:
 
 async def run_fingerprint_in_camoufox() -> dict:
     """Run FingerprintJS in Camoufox and return the client-side result."""
-    from camoufox.async_api import AsyncCamoufox
+    from camoufox.async_api import AsyncCamoufox, AsyncNewContext
 
     server, port = await _start_test_server()
     try:
         async with AsyncCamoufox(headless=True) as browser:
-            # Use identity encoding to work around Camoufox's broken Accept-Encoding override
-            ctx = await browser.new_context(extra_http_headers={"accept-encoding": "identity"})
+            ctx = await AsyncNewContext(
+                browser,
+                # Workaround: C++ Accept-Encoding override breaks ES module decompression (U+FFFD).
+                # Remove once binary is rebuilt with the network-patches.patch fix.
+                extra_http_headers={"accept-encoding": "identity"},
+            )
             page = await ctx.new_page()
             # Navigate to a real domain first, then inject FP script
             # (FingerprintJS Pro validates the origin domain)
@@ -201,7 +206,9 @@ def print_detection_report(label: str, client_result: dict, server_result: dict 
     tampering = products.get("tampering", {}).get("data", {})
     print(f"\n  --- Tampering ---")
     print(f"  Anomaly:      {tampering.get('anomalyScore', '?')}")
+    print(f"  Confidence:   {tampering.get('confidence', '?')}")
     print(f"  Anti-detect:  {tampering.get('antiDetectBrowser', '?')}")
+    print(f"  Raw:          {json.dumps(tampering)}")
 
     # Suspect score
     suspect = products.get("suspectScore", {}).get("data", {})
