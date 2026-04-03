@@ -77,13 +77,15 @@ def get_env_vars(
             'win': 'windows',
         }
         os_dir = directory_map.get(user_agent_os, user_agent_os)
-        fontconfig_path = get_path(os.path.join("fontconfigs", os_dir))
-
-        # assert that fonts.conf exists in the directory
-        if not os.path.exists(os.path.join(fontconfig_path, "fonts.conf")):
-            # puke violently if fonts.conf doesn't exist!!
+        # v146+ uses "fontconfig", older versions use "fontconfigs"
+        for fc_dir in ("fontconfigs", "fontconfig"):
+            fontconfig_path = get_path(os.path.join(fc_dir, os_dir))
+            if os.path.exists(os.path.join(fontconfig_path, "fonts.conf")):
+                break
+        else:
             raise FileNotFoundError(
-                f"fonts.conf not found in {fontconfig_path}!  Something ain't right with your camoufox bundle."
+                f"fonts.conf not found in fontconfigs/{os_dir} or fontconfig/{os_dir}! "
+                f"Something ain't right with your camoufox bundle."
             )
 
     return env_vars

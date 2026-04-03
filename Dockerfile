@@ -8,7 +8,7 @@ COPY . /app
 # Install necessary packages
 RUN apt-get update && apt-get install -y \
     # Mach build tools
-    build-essential make msitools wget unzip rustc \
+    build-essential make msitools wget unzip rustc nasm \
     # Python
     python3 python3-dev python3-pip \
     # Camoufox build system tools
@@ -23,7 +23,9 @@ RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Fetch Firefox & apply initial patches
-RUN make setup-minimal && \
+RUN git config --global user.email "build@camoufox" && \
+    git config --global user.name "build" && \
+    make setup && \
     make mozbootstrap && \
     mkdir -p /app/dist
 

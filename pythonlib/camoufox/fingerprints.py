@@ -338,7 +338,12 @@ def _build_init_script(values: Dict[str, Any]) -> str:
     """
     import json as _json
 
-    lines = ['(function(v) {', '  var w = window;']
+    lines = [
+        '(function(v) {',
+        '  var w = window;',
+        '  // Remove navigator.webdriver property (prevents FingerprintJS tampering detection)',
+        '  try { delete Navigator.prototype.webdriver; } catch(e) {}',
+    ]
 
     setters = [
         ('fontSpacingSeed', 'setFontSpacingSeed', '{val}'),
@@ -428,6 +433,17 @@ def generate_context_fingerprint(
     By default, uses BrowserForge for infinite unique synthetic fingerprints.
     Pass a preset dict to use a real fingerprint preset instead.
     """
+    # Auto-detect host OS to avoid OS mismatch detection (e.g. Windows UA on macOS hardware)
+    if os is None:
+        import platform as _platform
+        _sys = _platform.system()
+        if _sys == 'Darwin':
+            os = 'macos'
+        elif _sys == 'Linux':
+            os = 'linux'
+        elif _sys == 'Windows':
+            os = 'windows'
+
     if preset is not None:
         # Use real fingerprint preset
         config = from_preset(preset, ff_version)
