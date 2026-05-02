@@ -21,8 +21,6 @@ const ALL_PERMISSIONS = [
 ];
 
 let globalTabAndWindowActivationChain = Promise.resolve();
-// This is a workaround for https://github.com/microsoft/playwright/issues/34586
-let didCreateFirstPage = false;
 let globalNewPageChain = Promise.resolve();
 
 class DownloadInterceptor {
@@ -310,10 +308,10 @@ export class TargetRegistry {
   }
 
   async newPage({browserContextId}) {
-    // When creating the very first page, we cannot create multiple in parallel.
-    // See https://github.com/microsoft/playwright/issues/34586.
-    if (didCreateFirstPage)
-      return this._newPageInternal({browserContextId});
+    // Serialize all page creation to avoid Firefox hangs when
+    // multiple windows are opened concurrently.
+    // See https://github.com/microsoft/playwright/issues/34586
+    // and https://github.com/daijro/camoufox/issues/279.
     const result = globalNewPageChain.then(() => this._newPageInternal({browserContextId}));
     globalNewPageChain = result.catch(error => { /* swallow errors to keep chain running */ });
     return result;
@@ -368,7 +366,6 @@ export class TargetRegistry {
       if (await target.hasFailedToOverrideTimezone())
         throw new Error('Failed to override timezone');
     }
-    didCreateFirstPage = true;
     return target.id();
   }
 

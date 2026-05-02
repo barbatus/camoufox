@@ -8,10 +8,13 @@ debs := python3 python3-dev python3-pip p7zip-full golang-go msitools wget aria2
 rpms := python3 python3-devel p7zip golang msitools wget aria2 sqlite-devel
 pacman := python python-pip p7zip go msitools wget aria2 sqlite
 
+FORK_TAG := v$(version)-$(release)
+
 .PHONY: help fetch setup setup-minimal clean set-target distclean build package \
         build-launcher check-arch revert edits run bootstrap mozbootstrap dir \
         package-linux package-macos package-windows vcredist_arch patch unpatch \
-        workspace check-arg edit-cfg ff-dbg tests update-ubo-assets generate-assets-car
+        workspace check-arg edit-cfg ff-dbg tests update-ubo-assets generate-assets-car \
+        docker-build docker-build-all release
 
 help:
 	@echo "Available targets:"
@@ -245,3 +248,39 @@ generate-assets-car:
 	bash ./scripts/generate-assets-car.sh
 
 vcredist_arch := $(shell echo $(arch) | sed 's/x86_64/x64/' | sed 's/i686/x86/')
+
+# ── Fork: Docker build & GitHub release ─────────────────────────────────────
+
+docker-build:
+	@echo "Building camoufox $(version)-$(release) for $(or $(TARGET),macos) $(or $(ARCH),arm64) ..."
+	docker build -t camoufox-builder .
+	docker run --rm \
+		-v "$$(pwd)/dist:/app/dist" \
+		-v "$$HOME/.mozbuild:/root/.mozbuild:rw" \
+		camoufox-builder \
+			--target $(or $(TARGET),macos) \
+			--arch $(or $(ARCH),arm64)
+	@echo "Build artifacts:"
+	@ls -lh dist/camoufox-*
+
+docker-build-all:
+	@echo "Building camoufox $(version)-$(release) for all platforms ..."
+	docker build -t camoufox-builder .
+	docker run --rm \
+		-v "$$(pwd)/dist:/app/dist" \
+		-v "$$HOME/.mozbuild:/root/.mozbuild:rw" \
+		camoufox-builder \
+			--target macos linux \
+			--arch arm64 x86_64
+	@echo "Build artifacts:"
+	@ls -lh dist/camoufox-*
+
+release:
+	@echo "Releasing $(FORK_TAG) ..."
+	@test -n "$$(ls dist/camoufox-* 2>/dev/null)" || { echo "Error: no build artifacts in dist/. Run 'make docker-build' first."; exit 1; }
+	@command -v gh >/dev/null || { echo "Error: gh CLI not installed. Run 'brew install gh'."; exit 1; }
+	gh release create $(FORK_TAG) \
+		--title "$(FORK_TAG)" \
+		--notes "Camoufox $(version)-$(release) with concurrent page fixes (#279)" \
+		dist/camoufox-*
+	@echo "Released $(FORK_TAG)"

@@ -2,14 +2,10 @@ diff --git a/browser/base/content/browser-init.js b/browser/base/content/browser
 index 1cfa4b8497..bdf8d7202e 100644
 --- a/browser/base/content/browser-init.js
 +++ b/browser/base/content/browser-init.js
-@@ -3,6 +3,16 @@
+@@ -3,6 +3,12 @@
   * License, v. 2.0. If a copy of the MPL was not distributed with this
   * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
  
-+const { AddonManager } = ChromeUtils.importESModule(
-+  "resource://gre/modules/AddonManager.sys.mjs",
-+  { global: "shared" }
-+);
 +const { FileUtils } = ChromeUtils.importESModule(
 +  "resource://gre/modules/FileUtils.sys.mjs",
 +  { global: "contextual" }
@@ -19,7 +15,7 @@ index 1cfa4b8497..bdf8d7202e 100644
  let _resolveDelayedStartup;
  var delayedStartupPromise = new Promise(resolve => {
    _resolveDelayedStartup = resolve;
-@@ -72,7 +82,7 @@ var gBrowserInit = {
+@@ -72,7 +78,7 @@ var gBrowserInit = {
      updateBookmarkToolbarVisibility();
  
      // Set a sane starting width/height for all resolutions on new profiles.
@@ -28,7 +24,7 @@ index 1cfa4b8497..bdf8d7202e 100644
        // When the fingerprinting resistance is enabled, making sure that we don't
        // have a maximum window to interfere with generating rounded window dimensions.
        document.documentElement.setAttribute("sizemode", "normal");
-@@ -310,6 +320,22 @@ var gBrowserInit = {
+@@ -310,6 +316,22 @@ var gBrowserInit = {
      // Update UI if browser is under remote control.
      gRemoteControl.updateVisualCue();
  
@@ -51,7 +47,7 @@ index 1cfa4b8497..bdf8d7202e 100644
      // If we are given a tab to swap in, take care of it before first paint to
      // avoid an about:blank flash.
      let tabToAdopt = this.getTabToAdopt();
-@@ -345,6 +371,31 @@ var gBrowserInit = {
+@@ -345,6 +367,31 @@ var gBrowserInit = {
        }
      }
  
@@ -83,7 +79,7 @@ index 1cfa4b8497..bdf8d7202e 100644
      // Wait until chrome is painted before executing code not critical to making the window visible
      this._boundDelayedStartup = this._delayedStartup.bind(this);
      window.addEventListener("MozAfterPaint", this._boundDelayedStartup);
-@@ -366,9 +417,152 @@ var gBrowserInit = {
+@@ -366,9 +413,192 @@ var gBrowserInit = {
        )?.removeAttribute("key");
      }
  
@@ -129,12 +125,57 @@ index 1cfa4b8497..bdf8d7202e 100644
 +      window.resizeBy(width - innerWidth, height + toolbarTop - innerHeight);
 +    }
 +
-+    // Install addons if specified
-+    let addonPaths = ChromeUtils.camouGetStringList("addons");
-+    if (addonPaths?.length) {
-+      Promise.all(addonPaths.map(path => this.installTemporaryAddon(path)))
-+        .then(addons => ChromeUtils.camouDebug("Installed " + addons.length + " addon(s)"))
-+        .catch(e => ChromeUtils.camouDebug("Failed to install addons: " + e));
++    // Install addons by writing pointer files into the profile's extensions/
++    // directory. This installs them as permanent profile extensions instead of
++    // temporary addons. Temporary addons (installTemporaryAddon) corrupt when
++    // concurrent pages are destroyed during active network interception.
++    // See https://github.com/daijro/camoufox/issues/279.
++    if (!gBrowserInit.__addonsInstalled) {
++      gBrowserInit.__addonsInstalled = true;
++      let addonPaths = ChromeUtils.camouGetStringList("addons");
++      if (addonPaths?.length) {
++        try {
++          const profDir = Services.dirsvc.get("ProfD", Ci.nsIFile);
++          const extDir = profDir.clone();
++          extDir.append("extensions");
++          if (!extDir.exists()) {
++            extDir.create(Ci.nsIFile.DIRECTORY_TYPE, 0o755);
++          }
++          for (const addonPath of addonPaths) {
++            // Read addon ID from manifest.json
++            const manifestFile = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
++            manifestFile.initWithPath(addonPath);
++            manifestFile.append("manifest.json");
++            const stream = Cc["@mozilla.org/network/file-input-stream;1"].createInstance(Ci.nsIFileInputStream);
++            stream.init(manifestFile, 0x01, 0, 0);
++            const sis = Cc["@mozilla.org/scriptableinputstream;1"].createInstance(Ci.nsIScriptableInputStream);
++            sis.init(stream);
++            const manifestJSON = sis.read(sis.available());
++            sis.close();
++            const manifest = JSON.parse(manifestJSON);
++            const addonId = manifest?.browser_specific_settings?.gecko?.id
++                         || manifest?.applications?.gecko?.id;
++            if (!addonId) {
++              ChromeUtils.camouDebug("Skipping addon without ID: " + addonPath);
++              continue;
++            }
++            // Write a pointer file: a text file whose content is the addon path.
++            // Firefox auto-loads extensions from <profile>/extensions/<addon-id>.
++            const pointerFile = extDir.clone();
++            pointerFile.append(addonId);
++            if (!pointerFile.exists()) {
++              const fos = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(Ci.nsIFileOutputStream);
++              fos.init(pointerFile, 0x02 | 0x08 | 0x20, 0o644, 0);
++              const data = addonPath + "\n";
++              fos.write(data, data.length);
++              fos.close();
++              ChromeUtils.camouDebug("Installed addon: " + addonId);
++            }
++          }
++        } catch(e) {
++          ChromeUtils.camouDebug("Failed to install addons: " + e);
++        }
++      }
 +    }
 +
 +    // Certificate handling
@@ -226,12 +267,7 @@ index 1cfa4b8497..bdf8d7202e 100644
 +    }
 +  },
 +
-+  async installTemporaryAddon(addonPath) {
-+    const addonFile = new FileUtils.File(addonPath);
-+    const addon = await AddonManager.installTemporaryAddon(addonFile);
-+    Services.obs.notifyObservers(null, "devtools-installed-addon", addon.id);
-+    return addon;
-+  },
++
 +
    _cancelDelayedStartup() {
      window.removeEventListener("MozAfterPaint", this._boundDelayedStartup);

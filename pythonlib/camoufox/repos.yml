@@ -6,7 +6,7 @@ default:
 # Browser repositories
 browsers:
   # Fallback to camoufox org
-  - repo: daijro/camoufox, camoufox/camoufox
+  - repo: barbatus/camoufox, daijro/camoufox, camoufox/camoufox
     name: Official
     pattern: "{name}-{version}-{build}-{os}.{arch}.zip"
     versions:

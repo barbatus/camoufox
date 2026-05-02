@@ -1,9 +1,18 @@
+diff --git a/dom/webidl/Navigator.webidl b/dom/webidl/Navigator.webidl
+index abcdef1234..1234abcdef 100644
+--- a/dom/webidl/Navigator.webidl
++++ b/dom/webidl/Navigator.webidl
+@@ -50,7 +50,8 @@ interface mixin NavigatorAutomationInformation {
+-  readonly attribute boolean webdriver;
++  [Pref="dom.webdriver.enabled"]
++  readonly attribute boolean webdriver;
+ };
 diff --git a/dom/base/Navigator.cpp b/dom/base/Navigator.cpp
 index 9880047350..318d2edba8 100644
 --- a/dom/base/Navigator.cpp
 +++ b/dom/base/Navigator.cpp
 @@ -2316,28 +2316,7 @@ dom::PrivateAttribution* Navigator::PrivateAttribution() {
- 
+
  /* static */
  bool Navigator::Webdriver() {
 -#ifdef ENABLE_WEBDRIVER
