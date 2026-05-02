@@ -15,30 +15,41 @@ from screeninfo import get_monitors
 from typing_extensions import TypeAlias
 from ua_parser import user_agent_parser
 
+from ._warnings import LeakWarning
 from .addons import DefaultAddons, add_default_addons, confirm_paths
 from .exceptions import (
     InvalidOS,
     InvalidPropertyType,
     NonFirefoxFingerprint,
 )
-from .fingerprints import from_browserforge, from_preset, generate_fingerprint, get_random_preset, _generate_random_font_subset, _generate_random_voice_subset, fix_navigator_arch, fix_screen_no_taskbar, clamp_window_dimensions, set_media_devices_defaults
+from .fingerprints import (
+    _generate_random_font_subset,
+    _generate_random_voice_subset,
+    clamp_window_dimensions,
+    fix_navigator_arch,
+    fix_screen_no_taskbar,
+    from_browserforge,
+    from_preset,
+    generate_fingerprint,
+    get_random_preset,
+    set_media_devices_defaults,
+)
 from .geolocation import geoip_allowed, get_geolocation
 from .ip import Proxy, public_ip, valid_ipv4, valid_ipv6
 from .locales import handle_locales
 from .pkgman import OS_NAME, get_path, installed_verstr, launch_path
 from .virtdisplay import VirtualDisplay
-from ._warnings import LeakWarning
 from .webgl import sample_webgl
 
 ListOrString: TypeAlias = Union[Tuple[str, ...], List[str], str]
 
 # Camoufox preferences to cache previous pages and requests
 CACHE_PREFS = {
-    'browser.sessionhistory.max_entries': 10,
-    'browser.sessionhistory.max_total_viewers': -1,
-    'browser.cache.memory.enable': True,
-    'browser.cache.disk_cache_ssl': True,
-    'browser.cache.disk.smart_size.enabled': True,
+    "browser.sessionhistory.max_entries": 10,
+    "browser.sessionhistory.max_total_viewers": -1,
+    "browser.cache.memory.enable": True,
+    "browser.cache.disk_cache_ssl": True,
+    "browser.cache.disk.smart_size.enabled": True,
 }
 
 
@@ -55,21 +66,23 @@ def _generate_fontconfig(fontconfig_path: str) -> str:
     fonts_dir = get_path("fonts")
     fonts_conf_src = os.path.join(fontconfig_path, "fonts.conf")
 
-    with open(fonts_conf_src, 'r') as f:
+    with open(fonts_conf_src, "r") as f:
         conf_content = f.read()
 
     conf_content = conf_content.replace(
         '<dir prefix="cwd">fonts</dir>',
-        f'<dir>{fonts_dir}</dir>',
+        f"<dir>{fonts_dir}</dir>",
     )
 
-    cache_dir = os.path.join(os.path.expanduser('~'), '.cache', 'camoufox', 'fontconfig')
+    cache_dir = os.path.join(
+        os.path.expanduser("~"), ".cache", "camoufox", "fontconfig"
+    )
     os.makedirs(cache_dir, exist_ok=True)
 
     content_hash = hashlib.sha256(conf_content.encode()).hexdigest()[:12]
-    runtime_conf = os.path.join(cache_dir, f'fonts-{content_hash}.conf')
+    runtime_conf = os.path.join(cache_dir, f"fonts-{content_hash}.conf")
     if not os.path.exists(runtime_conf):
-        with open(runtime_conf, 'w') as f:
+        with open(runtime_conf, "w") as f:
             f.write(conf_content)
 
     return runtime_conf
@@ -89,8 +102,8 @@ def get_env_vars(
         sys.exit(1)
 
     # Split the config into chunks
-    chunk_size = 2047 if OS_NAME == 'win' else 32767
-    config_str = updated_config_data.decode('utf-8')
+    chunk_size = 2047 if OS_NAME == "win" else 32767
+    config_str = updated_config_data.decode("utf-8")
 
     for i in range(0, len(config_str), chunk_size):
         chunk = config_str[i : i + chunk_size]
@@ -101,30 +114,28 @@ def get_env_vars(
             print(f"Error setting {env_name}: {e}")
             sys.exit(1)
 
-    if OS_NAME == 'lin':
+    if OS_NAME == "lin":
         # https://github.com/coryking/camoufox/commit/f21eeb2850a74cc104fb57e17e0a2fa27b7a2a28
         # Thanks @coryking
         # the user_agent_os is either 'lin', 'mac', or 'win' but our fontconfig directory is 'linux', 'macos', or 'windows'
         directory_map = {
-            'lin': 'linux',
-            'mac': 'macos',
-            'win': 'windows',
+            "lin": "linux",
+            "mac": "macos",
+            "win": "windows",
         }
         os_dir = directory_map.get(user_agent_os, user_agent_os)
-
-        # v150+ uses "fontconfig/" (matching the Go launcher); older bundles shipped "fontconfigs/".
-        fontconfig_path = get_path(os.path.join("fontconfig", os_dir))
-        if not os.path.exists(os.path.join(fontconfig_path, "fonts.conf")):
-            fontconfig_path = get_path(os.path.join("fontconfigs", os_dir))
-
-        # assert that fonts.conf exists in the directory
-        if not os.path.exists(os.path.join(fontconfig_path, "fonts.conf")):
-            # puke violently if fonts.conf doesn't exist!!
+        # v146+ bundles the dir as "fontconfig" (singular); older versions use "fontconfigs" (plural).
+        for fc_dir in ("fontconfigs", "fontconfig"):
+            fontconfig_path = get_path(os.path.join(fc_dir, os_dir))
+            if os.path.exists(os.path.join(fontconfig_path, "fonts.conf")):
+                break
+        else:
             raise FileNotFoundError(
-                f"fonts.conf not found in {fontconfig_path}!  Something ain't right with your camoufox bundle."
+                f"fonts.conf not found in fontconfigs/{os_dir} or fontconfig/{os_dir}! "
+                f"Something ain't right with your camoufox bundle."
             )
 
-        env_vars['FONTCONFIG_FILE'] = _generate_fontconfig(fontconfig_path)
+        env_vars["FONTCONFIG_FILE"] = _generate_fontconfig(fontconfig_path)
 
     return env_vars
 
@@ -140,7 +151,7 @@ def _load_properties(path: Optional[Path] = None) -> Dict[str, str]:
     with open(prop_file, "rb") as f:
         prop_dict = orjson.loads(f.read())
 
-    return {prop['property']: prop['type'] for prop in prop_dict}
+    return {prop["property"]: prop["type"] for prop in prop_dict}
 
 
 def validate_config(config_map: Dict[str, str], path: Optional[Path] = None) -> None:
@@ -152,7 +163,7 @@ def validate_config(config_map: Dict[str, str], path: Optional[Path] = None) -> 
     for key, value in config_map.items():
         expected_type = property_types.get(key)
         if not expected_type:
-            print(f'Skipping unknown patch {key} : {value}')
+            print(f"Skipping unknown patch {key} : {value}")
             continue  # Property not supported by this browser version; skip silently
 
         if not validate_type(value, expected_type):
@@ -168,7 +179,9 @@ def validate_type(value: Any, expected_type: str) -> bool:
     if expected_type == "str":
         return isinstance(value, str)
     elif expected_type == "int":
-        return isinstance(value, int) or (isinstance(value, float) and value.is_integer())
+        return isinstance(value, int) or (
+            isinstance(value, float) and value.is_integer()
+        )
     elif expected_type == "uint":
         return (
             isinstance(value, int) or (isinstance(value, float) and value.is_integer())
@@ -185,7 +198,7 @@ def validate_type(value: Any, expected_type: str) -> bool:
         return False
 
 
-def get_target_os(config: Dict[str, Any]) -> Literal['mac', 'win', 'lin']:
+def get_target_os(config: Dict[str, Any]) -> Literal["mac", "win", "lin"]:
     """
     Gets the OS from the config if the user agent is set,
     otherwise returns the OS of the current system.
@@ -195,11 +208,11 @@ def get_target_os(config: Dict[str, Any]) -> Literal['mac', 'win', 'lin']:
     return OS_NAME
 
 
-def determine_ua_os(user_agent: str) -> Literal['mac', 'win', 'lin']:
+def determine_ua_os(user_agent: str) -> Literal["mac", "win", "lin"]:
     """
     Determines the OS from the user agent string.
     """
-    parsed_ua = user_agent_parser.ParseOS(user_agent).get('family')
+    parsed_ua = user_agent_parser.ParseOS(user_agent).get("family")
     if not parsed_ua:
         raise ValueError("Could not determine OS from user agent")
     if parsed_ua.startswith("Mac"):
@@ -235,10 +248,10 @@ def update_fonts(config: Dict[str, Any], target_os: str) -> None:
         fonts = orjson.loads(f.read())[target_os]
 
     # Merge with existing fonts
-    if 'fonts' in config:
-        config['fonts'] = np.unique(fonts + config['fonts']).tolist()
+    if "fonts" in config:
+        config["fonts"] = np.unique(fonts + config["fonts"]).tolist()
     else:
-        config['fonts'] = fonts
+        config["fonts"] = fonts
 
 
 def check_custom_fingerprint(fingerprint: Fingerprint) -> None:
@@ -247,17 +260,17 @@ def check_custom_fingerprint(fingerprint: Fingerprint) -> None:
     and warns the user that passing their own fingerprint is not recommended.
     """
     # Check what the browser is
-    browser_name = user_agent_parser.ParseUserAgent(fingerprint.navigator.userAgent).get(
-        'family', 'Non-Firefox'
-    )
-    if browser_name != 'Firefox':
+    browser_name = user_agent_parser.ParseUserAgent(
+        fingerprint.navigator.userAgent
+    ).get("family", "Non-Firefox")
+    if browser_name != "Firefox":
         raise NonFirefoxFingerprint(
             f'"{browser_name}" fingerprints are not supported in Camoufox. '
-            'Using fingerprints from a browser other than Firefox WILL lead to detection. '
-            'If this is intentional, pass `i_know_what_im_doing=True`.'
+            "Using fingerprints from a browser other than Firefox WILL lead to detection. "
+            "If this is intentional, pass `i_know_what_im_doing=True`."
         )
 
-    LeakWarning.warn('custom_fingerprint', False)
+    LeakWarning.warn("custom_fingerprint", False)
 
 
 def check_valid_os(os: ListOrString) -> None:
@@ -272,7 +285,7 @@ def check_valid_os(os: ListOrString) -> None:
     if not os.islower():
         raise InvalidOS(f"OS values must be lowercase: '{os}'")
     # Assert that the OS is supported by Camoufox
-    if os not in ('windows', 'macos', 'linux'):
+    if os not in ("windows", "macos", "linux"):
         raise InvalidOS(f"Camoufox does not support the OS: '{os}'")
 
 
@@ -280,8 +293,8 @@ def _clean_locals(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Gets the launch options from the locals of the function.
     """
-    del data['playwright']
-    del data['persistent_context']
+    del data["playwright"]
+    del data["persistent_context"]
     return data
 
 
@@ -313,7 +326,7 @@ def is_domain_set(
     """
     for prop in properties:
         # If the . prefix exists, check if the domain is a prefix of any key in the config
-        if prop[-1] in ('.', ':'):
+        if prop[-1] in (".", ":"):
             if any(key.startswith(prop) for key in config):
                 return True
         # Otherwise, check if the domain is a direct key in the config
@@ -329,30 +342,34 @@ def warn_manual_config(config: Dict[str, Any]) -> None:
     """
     # Manual locale setting
     if is_domain_set(
-        config, 'navigator.language', 'navigator.languages', 'headers.Accept-Language', 'locale:'
+        config,
+        "navigator.language",
+        "navigator.languages",
+        "headers.Accept-Language",
+        "locale:",
     ):
-        LeakWarning.warn('locale', False)
+        LeakWarning.warn("locale", False)
     # Manual geolocation and timezone setting
-    if is_domain_set(config, 'geolocation:', 'timezone'):
-        LeakWarning.warn('geolocation', False)
+    if is_domain_set(config, "geolocation:", "timezone"):
+        LeakWarning.warn("geolocation", False)
     # Manual User-Agent setting
-    if is_domain_set(config, 'headers.User-Agent'):
-        LeakWarning.warn('header-ua', False)
+    if is_domain_set(config, "headers.User-Agent"):
+        LeakWarning.warn("header-ua", False)
     # Manual navigator setting
-    if is_domain_set(config, 'navigator.'):
-        LeakWarning.warn('navigator', False)
+    if is_domain_set(config, "navigator."):
+        LeakWarning.warn("navigator", False)
     # Manual screen/window setting
-    if is_domain_set(config, 'screen.', 'window.', 'document.body.'):
-        LeakWarning.warn('viewport', False)
+    if is_domain_set(config, "screen.", "window.", "document.body."):
+        LeakWarning.warn("viewport", False)
 
 
 _WINDOW_DIM_KEYS = (
-    'window.outerWidth',
-    'window.outerHeight',
-    'window.innerWidth',
-    'window.innerHeight',
-    'document.body.clientWidth',
-    'document.body.clientHeight',
+    "window.outerWidth",
+    "window.outerHeight",
+    "window.innerWidth",
+    "window.innerHeight",
+    "document.body.clientWidth",
+    "document.body.clientHeight",
 )
 
 
@@ -362,11 +379,15 @@ def spoofs_window_dimensions(from_options: Dict[str, Any]) -> bool:
     dimension. The config is chunked across CAMOU_CONFIG_<n> env vars, so
     reassemble it in index order before looking.
     """
-    env = from_options.get('env') or {}
-    chunks = [(int(k.rsplit('_', 1)[1]), v) for k, v in env.items() if k.startswith('CAMOU_CONFIG_')]
+    env = from_options.get("env") or {}
+    chunks = [
+        (int(k.rsplit("_", 1)[1]), v)
+        for k, v in env.items()
+        if k.startswith("CAMOU_CONFIG_")
+    ]
     if not chunks:
         return False
-    blob = ''.join(v for _, v in sorted(chunks))
+    blob = "".join(v for _, v in sorted(chunks))
     return any(key in blob for key in _WINDOW_DIM_KEYS)
 
 
@@ -384,7 +405,7 @@ def attach_no_viewport_default(target: Any) -> Any:
     handshake resolves immediately and the page reports the spoofed dimensions
     exactly. Explicit viewport=/no_viewport= from the caller always wins.
     """
-    for name in ('new_page', 'new_context'):
+    for name in ("new_page", "new_context"):
         original = getattr(target, name, None)
         if original is None:
             continue
@@ -392,8 +413,8 @@ def attach_no_viewport_default(target: Any) -> Any:
         def wrap(original: Any) -> Any:
             @wraps(original)
             def wrapper(*args: Any, **kwargs: Any) -> Any:
-                if 'viewport' not in kwargs and 'no_viewport' not in kwargs:
-                    kwargs['no_viewport'] = True
+                if "viewport" not in kwargs and "no_viewport" not in kwargs:
+                    kwargs["no_viewport"] = True
                 # Works for both sync and async: async returns the coroutine
                 # unawaited, and the caller awaits it as usual.
                 return original(*args, **kwargs)
@@ -609,11 +630,11 @@ def launch_options(
 
     # Handle virtual display
     if virtual_display:
-        env['DISPLAY'] = virtual_display
+        env["DISPLAY"] = virtual_display
         # Virtual display uses Xvfb (X11). If the host session forces Wayland via env vars,
         # GTK/Firefox may try Wayland and ignore DISPLAY, breaking Xvfb usage.
-        env['GDK_BACKEND'] = 'x11'
-        env.pop('WAYLAND_DISPLAY', None)
+        env["GDK_BACKEND"] = "x11"
+        env.pop("WAYLAND_DISPLAY", None)
         env["MOZ_ENABLE_WAYLAND"] = "0"
 
     # Warn the user for manual config settings
@@ -623,9 +644,9 @@ def launch_options(
     # Snapshot which domains the USER set before fingerprint generation fills in
     # the rest. The post-generation BrowserForge-correction fixes below must
     # only touch generated values, never override what the user passed.
-    _user_set_navigator = is_domain_set(config, 'navigator.')
-    _user_set_screen_window = is_domain_set(config, 'screen.', 'window.')
-    _user_set_media_devices = is_domain_set(config, 'mediaDevices:')
+    _user_set_navigator = is_domain_set(config, "navigator.")
+    _user_set_screen_window = is_domain_set(config, "screen.", "window.")
+    _user_set_media_devices = is_domain_set(config, "mediaDevices:")
 
     # Assert the target OS is valid
     if os:
@@ -633,7 +654,7 @@ def launch_options(
 
     # webgl_config requires OS to be set
     elif webgl_config:
-        raise ValueError('OS must be set when using webgl_config')
+        raise ValueError("OS must be set when using webgl_config")
 
     # Add the default addons
     add_default_addons(addons, exclude_addons)
@@ -641,14 +662,14 @@ def launch_options(
     # Confirm all addon paths are valid
     if addons:
         confirm_paths(addons)
-        config['addons'] = addons
+        config["addons"] = addons
 
     # Get the Firefox version
     if ff_version:
         ff_version_str = str(ff_version)
-        LeakWarning.warn('ff_version', i_know_what_im_doing)
+        LeakWarning.warn("ff_version", i_know_what_im_doing)
     else:
-        ff_version_str = installed_verstr().split('.', 1)[0]
+        ff_version_str = installed_verstr().split(".", 1)[0]
 
     # Generate a fingerprint
     _used_preset = False
@@ -669,7 +690,7 @@ def launch_options(
     if not _used_preset and fingerprint is None:
         # Default: BrowserForge synthetic generation (infinite unique fingerprints)
         fingerprint = generate_fingerprint(
-            screen=screen or get_screen_cons(headless or 'DISPLAY' in env),
+            screen=screen or get_screen_cons(headless or "DISPLAY" in env),
             window=window,
             os=os,
         )
@@ -692,31 +713,37 @@ def launch_options(
         clamp_window_dimensions(config)
 
     # Set a random window.history.length
-    set_into(config, 'window.history.length', randrange(1, 6))  # nosec
+    set_into(config, "window.history.length", randrange(1, 6))  # nosec
 
     # Update fonts list
     if fonts:
-        config['fonts'] = fonts
+        config["fonts"] = fonts
 
     if custom_fonts_only:
-        firefox_user_prefs['gfx.bundled-fonts.activate'] = 0
+        firefox_user_prefs["gfx.bundled-fonts.activate"] = 0
         if fonts:
-            LeakWarning.warn('custom_fonts_only')
+            LeakWarning.warn("custom_fonts_only")
         else:
-            raise ValueError('No custom fonts were passed, but `custom_fonts_only` is enabled.')
-    elif 'fonts' not in config or not config.get('fonts'):
+            raise ValueError(
+                "No custom fonts were passed, but `custom_fonts_only` is enabled."
+            )
+    elif "fonts" not in config or not config.get("fonts"):
         # Generate a unique random font subset from the OS font list
-        os_name = {'win': 'windows', 'mac': 'macos', 'lin': 'linux'}.get(target_os, 'macos')
+        os_name = {"win": "windows", "mac": "macos", "lin": "linux"}.get(
+            target_os, "macos"
+        )
         try:
-            config['fonts'] = _generate_random_font_subset(os_name)
+            config["fonts"] = _generate_random_font_subset(os_name)
         except Exception:
             update_fonts(config, target_os)
 
     # Generate a unique random voice subset
-    if 'voices' not in config:
-        os_name_v = {'win': 'windows', 'mac': 'macos', 'lin': 'linux'}.get(target_os, 'macos')
+    if "voices" not in config:
+        os_name_v = {"win": "windows", "mac": "macos", "lin": "linux"}.get(
+            target_os, "macos"
+        )
         try:
-            config['voices'] = _generate_random_voice_subset(os_name_v)
+            config["voices"] = _generate_random_voice_subset(os_name_v)
         except Exception:
             pass
 
@@ -726,9 +753,9 @@ def launch_options(
         set_media_devices_defaults(config)
 
     # Set random seeds for fingerprint noise (per launch)
-    set_into(config, 'fonts:spacing_seed', randint(1, 4_294_967_295))  # nosec
-    set_into(config, 'audio:seed', randint(1, 4_294_967_295))  # nosec
-    set_into(config, 'canvas:seed', randint(1, 4_294_967_295))  # nosec
+    set_into(config, "fonts:spacing_seed", randint(1, 4_294_967_295))  # nosec
+    set_into(config, "audio:seed", randint(1, 4_294_967_295))  # nosec
+    set_into(config, "canvas:seed", randint(1, 4_294_967_295))  # nosec
 
     # Set geolocation
     if geoip:
@@ -744,15 +771,15 @@ def launch_options(
         # Spoof WebRTC if not blocked
         if not block_webrtc:
             if valid_ipv4(geoip):
-                set_into(config, 'webrtc:ipv4', geoip)
-                firefox_user_prefs['network.dns.disableIPv6'] = True
+                set_into(config, "webrtc:ipv4", geoip)
+                firefox_user_prefs["network.dns.disableIPv6"] = True
             elif valid_ipv6(geoip):
-                set_into(config, 'webrtc:ipv6', geoip)
+                set_into(config, "webrtc:ipv6", geoip)
 
         geolocation = get_geolocation(geoip, geoip_db=geoip_db)
         geo_config = geolocation.as_config()
         for key, value in geo_config.items():
-            if key in ('timezone', 'locale:language', 'locale:region', 'locale:script'):
+            if key in ("timezone", "locale:language", "locale:region", "locale:script"):
                 config.setdefault(key, value)
             else:
                 config[key] = value
@@ -761,10 +788,10 @@ def launch_options(
     # This is a very bad idea; the warning cannot be ignored with i_know_what_im_doing.
     elif (
         proxy
-        and 'localhost' not in proxy.get('server', '')
-        and not is_domain_set(config, 'geolocation')
+        and "localhost" not in proxy.get("server", "")
+        and not is_domain_set(config, "geolocation")
     ):
-        LeakWarning.warn('proxy_without_geoip')
+        LeakWarning.warn("proxy_without_geoip")
 
     # Set locale
     if locale:
@@ -772,38 +799,40 @@ def launch_options(
 
     # Pass the humanize option
     if humanize:
-        set_into(config, 'humanize', True)
+        set_into(config, "humanize", True)
         if isinstance(humanize, (int, float)):
-            set_into(config, 'humanize:maxTime', humanize)
+            set_into(config, "humanize:maxTime", humanize)
 
     # Enable the main world context creation
     if main_world_eval:
-        set_into(config, 'allowMainWorld', True)
+        set_into(config, "allowMainWorld", True)
 
     # Set Firefox user preferences
     if block_images:
-        LeakWarning.warn('block_images', i_know_what_im_doing)
-        firefox_user_prefs['permissions.default.image'] = 2
+        LeakWarning.warn("block_images", i_know_what_im_doing)
+        firefox_user_prefs["permissions.default.image"] = 2
     if block_webrtc:
-        firefox_user_prefs['media.peerconnection.enabled'] = False
+        firefox_user_prefs["media.peerconnection.enabled"] = False
     if disable_coop:
-        LeakWarning.warn('disable_coop', i_know_what_im_doing)
-        firefox_user_prefs['browser.tabs.remote.useCrossOriginOpenerPolicy'] = False
+        LeakWarning.warn("disable_coop", i_know_what_im_doing)
+        firefox_user_prefs["browser.tabs.remote.useCrossOriginOpenerPolicy"] = False
 
     # Allow allow_webgl parameter for backwards compatibility
-    if block_webgl or launch_options.pop('allow_webgl', True) is False:
-        firefox_user_prefs['webgl.disabled'] = True
-        LeakWarning.warn('block_webgl', i_know_what_im_doing)
+    if block_webgl or launch_options.pop("allow_webgl", True) is False:
+        firefox_user_prefs["webgl.disabled"] = True
+        LeakWarning.warn("block_webgl", i_know_what_im_doing)
     else:
         # If the user has provided a specific WebGL vendor/renderer pair, use it
         if webgl_config:
             webgl_fp = sample_webgl(target_os, *webgl_config)
-        elif config.get('webGl:vendor') and config.get('webGl:renderer'):
+        elif config.get("webGl:vendor") and config.get("webGl:renderer"):
             # Preset already set vendor/renderer — sample matching WebGL params
-            webgl_fp = sample_webgl(target_os, config['webGl:vendor'], config['webGl:renderer'])
+            webgl_fp = sample_webgl(
+                target_os, config["webGl:vendor"], config["webGl:renderer"]
+            )
         else:
             webgl_fp = sample_webgl(target_os)
-        enable_webgl2 = webgl_fp.pop('webGl2Enabled')
+        enable_webgl2 = webgl_fp.pop("webGl2Enabled")
 
         # Merge the WebGL fingerprint into the config
         merge_into(config, webgl_fp)
@@ -811,8 +840,8 @@ def launch_options(
         merge_into(
             firefox_user_prefs,
             {
-                'webgl.enable-webgl2': enable_webgl2,
-                'webgl.force-enabled': True,
+                "webgl.enable-webgl2": enable_webgl2,
+                "webgl.force-enabled": True,
             },
         )
 
@@ -822,7 +851,7 @@ def launch_options(
 
     # Print the config if debug is enabled
     if debug:
-        print('[DEBUG] Config:')
+        print("[DEBUG] Config:")
         pprint(config)
 
     # Validate the config
